@@ -42,13 +42,6 @@ services:
     networks:
       - go-server
 
-  migrate:
-    image: migrate/migrate:v4.17.1
-    volumes:
-      - ./migrations/sql:/migrations
-    networks:
-      - go-server
-
 networks:
   go-server:
     driver: bridge
