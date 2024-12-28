@@ -3,13 +3,13 @@ package handlers
 import (
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 
 	"server/db"
+	errs "server/errors"
 )
 
 type ReducedUserDetail struct {
@@ -62,11 +62,7 @@ func RetrieveUserHandler(sqlDB *sql.DB) http.HandlerFunc {
 
 		userEntity, err := db.GetUserById(sqlDB, req.Context(), userId)
 		if err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				http.Error(w, fmt.Sprintf("UserDetailHandler - User info not found: %v", err), 404)
-			} else {
-				http.Error(w, fmt.Sprintf("UserDetailhandler - Failed to retrieve user info: %v", err), 500)
-			}
+			errs.APIError(w, err)
 			return
 		}
 
@@ -102,7 +98,7 @@ func CreateUserHandler(sqlDB *sql.DB) http.HandlerFunc {
 
 		userEntity, err := db.CreateUser(sqlDB, req.Context(), reqBody)
 		if err != nil {
-			http.Error(w, fmt.Sprintf("CreateUserHandler - DB error: %v", err), 500)
+			errs.APIError(w, err)
 			return
 		}
 
