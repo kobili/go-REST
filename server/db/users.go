@@ -46,12 +46,12 @@ func GetUsers(db *sql.DB, ctx context.Context) ([]UserEntity, error) {
 		if err := rows.Scan(
 			&user.UserId, &user.Email, &user.FirstName, &user.LastName, &user.Age, pq.Array(&user.Aliases),
 		); err != nil {
-			return nil, fmt.Errorf("GetUsers: %w", err)
+			return nil, errs.NewHTTPError("Failed to retrieve users", http.StatusInternalServerError, err)
 		}
 		users = append(users, user)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("GetUsers: %v", err)
+		return nil, errs.NewHTTPError("Failed to retrieve users", http.StatusInternalServerError, err)
 	}
 	return users, nil
 }
@@ -80,7 +80,7 @@ func GetUserById(db *sql.DB, ctx context.Context, userId string) (*UserEntity, e
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, errs.NewHTTPError(fmt.Sprintf("No user with id %s", userId), http.StatusNotFound, nil)
+			return nil, userIdNotFoundError(userId)
 		}
 
 		return nil, errs.NewHTTPError("Failed to retrieve user", http.StatusInternalServerError, err)
@@ -175,7 +175,23 @@ func UpdateUser(db *sql.DB, ctx context.Context, userId string, data UpdateUserP
 		pq.Array(&user.Aliases),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("UpdateUser - Could not update user: %w", err)
+		if err == sql.ErrNoRows {
+			return nil, userIdNotFoundError(userId)
+		}
+
+		var pgError *pgconn.PgError
+		if errors.As(err, &pgError) {
+			if pgError.Code == "23505" {
+				// Duplicate key error
+				return nil, errs.NewHTTPError(
+					fmt.Sprintf("Duplicate key violation for constraint `%s`", pgError.ConstraintName),
+					http.StatusConflict,
+					nil,
+				)
+			}
+		}
+
+		return nil, errs.NewHTTPError("Could not update user", http.StatusInternalServerError, err)
 	}
 
 	return &user, nil
@@ -188,8 +204,16 @@ func DeleteUser(db *sql.DB, ctx context.Context, userId string) error {
 		userId,
 	)
 	if err != nil {
-		return fmt.Errorf("DeleteUser - Could not delete user: %w", err)
+		return errs.NewHTTPError(
+			fmt.Sprintf("Could not delete user %s", userId),
+			http.StatusInternalServerError,
+			err,
+		)
 	}
 
 	return nil
+}
+
+func userIdNotFoundError(userId string) error {
+	return errs.NewHTTPError(fmt.Sprintf("No user with id %s", userId), http.StatusNotFound, nil)
 }
