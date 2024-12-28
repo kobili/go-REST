@@ -22,7 +22,7 @@ func ListUsersHandler(sqlDB *sql.DB) http.HandlerFunc {
 	fn := func(w http.ResponseWriter, req *http.Request) {
 		userEntities, err := db.GetUsers(sqlDB, req.Context())
 		if err != nil {
-			http.Error(w, err.Error(), 500)
+			errs.APIError(w, err)
 			return
 		}
 
@@ -38,8 +38,10 @@ func ListUsersHandler(sqlDB *sql.DB) http.HandlerFunc {
 
 		resBody, err := json.Marshal(users)
 		if err != nil {
-			http.Error(w, fmt.Sprintf("ListUsersHandler - Error marshalling to json: %v", err), 500)
+			errs.APIError(w, jsonMarshallingError(err))
+			return
 		}
+
 		w.Header().Add("Content-Type", "application/json")
 		w.Write(resBody)
 	}
@@ -77,9 +79,10 @@ func RetrieveUserHandler(sqlDB *sql.DB) http.HandlerFunc {
 
 		resBody, err := json.Marshal(user)
 		if err != nil {
-			http.Error(w, fmt.Sprintf("UserDetailHandler - Error marshalling to json: %v", err), 500)
+			errs.APIError(w, jsonMarshallingError(err))
 			return
 		}
+
 		w.Header().Add("Content-Type", "application/json")
 		w.Write(resBody)
 	}
@@ -92,7 +95,7 @@ func CreateUserHandler(sqlDB *sql.DB) http.HandlerFunc {
 		var reqBody db.UpdateUserPayload
 		err := json.NewDecoder(req.Body).Decode(&reqBody)
 		if err != nil {
-			http.Error(w, fmt.Sprintf("CreateUserHandler - Failed to decode request body: %v", err), 500)
+			errs.APIError(w, jsonDecodeError(err))
 			return
 		}
 
@@ -113,7 +116,7 @@ func CreateUserHandler(sqlDB *sql.DB) http.HandlerFunc {
 
 		resBody, err := json.Marshal(newUser)
 		if err != nil {
-			http.Error(w, fmt.Sprintf("CreateUserHandler - Error marshalling to json: %v", err), 500)
+			errs.APIError(w, jsonMarshallingError(err))
 			return
 		}
 
@@ -131,13 +134,13 @@ func UpdateUserHandler(sqlDB *sql.DB) http.HandlerFunc {
 		var reqBody db.UpdateUserPayload
 		err := json.NewDecoder(req.Body).Decode(&reqBody)
 		if err != nil {
-			http.Error(w, fmt.Sprintf("UpdateUserHandler - Failed to decode request body: %v", err), 500)
+			errs.APIError(w, jsonDecodeError(err))
 			return
 		}
 
 		userEntity, err := db.UpdateUser(sqlDB, req.Context(), userId, reqBody)
 		if err != nil {
-			http.Error(w, fmt.Sprintf("UpdateUserHandler - DB error: %v", err), 500)
+			errs.APIError(w, err)
 			return
 		}
 
@@ -150,7 +153,7 @@ func UpdateUserHandler(sqlDB *sql.DB) http.HandlerFunc {
 			Aliases:   userEntity.Aliases,
 		})
 		if err != nil {
-			http.Error(w, fmt.Sprintf("UpdateUserHandler - Error marshalling to json: %v", err), 500)
+			errs.APIError(w, jsonMarshallingError(err))
 			return
 		}
 
@@ -171,4 +174,12 @@ func DeleteUserHandler(sqlDB *sql.DB) http.HandlerFunc {
 	}
 
 	return http.HandlerFunc(fn)
+}
+
+func jsonDecodeError(err error) error {
+	return fmt.Errorf("failed to decode json: %v", err)
+}
+
+func jsonMarshallingError(err error) error {
+	return fmt.Errorf("error serializing json: %v", err)
 }
