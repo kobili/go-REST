@@ -3,9 +3,14 @@ package db
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
+	"net/http"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/lib/pq"
+
+	errs "server/errors"
 )
 
 type UserEntity struct {
@@ -74,7 +79,11 @@ func GetUserById(db *sql.DB, ctx context.Context, userId string) (*UserEntity, e
 		pq.Array(&user.Aliases),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("GetUserById(%s): %w", userId, err)
+		if err == sql.ErrNoRows {
+			return nil, errs.NewHTTPError(fmt.Sprintf("No user with id %s", userId), http.StatusNotFound, nil)
+		}
+
+		return nil, errs.NewHTTPError("Failed to retrieve user", http.StatusInternalServerError, err)
 	}
 
 	return &user, nil
@@ -115,7 +124,19 @@ func CreateUser(db *sql.DB, ctx context.Context, data UpdateUserPayload) (*UserE
 		pq.Array(&user.Aliases),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("CreateUser - Could not create user: %w", err)
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) {
+			if pgErr.Code == "23505" {
+				// Duplicate key error
+				return nil, errs.NewHTTPError(
+					fmt.Sprintf("Duplicate key violation for constraint `%s`", pgErr.ConstraintName),
+					http.StatusConflict,
+					nil,
+				)
+			}
+		}
+
+		return nil, errs.NewHTTPError("Failed to save user to db", http.StatusInternalServerError, err)
 	}
 
 	return &user, nil
